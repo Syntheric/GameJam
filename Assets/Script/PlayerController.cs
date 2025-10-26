@@ -1,5 +1,7 @@
+using System.Collections; // Wajib ditambahkan untuk menggunakan Coroutine
 using UnityEngine;
 
+[RequireComponent(typeof(AudioSource))]
 public class PlayerController : MonoBehaviour
 {
     [Header("Movement Settings")]
@@ -8,32 +10,47 @@ public class PlayerController : MonoBehaviour
     public float jumpForce = 7.0f;
 
     [Header("Stamina Settings")]
-    public float maxStamina = 5f;                  
-    public float staminaDrainPerSecond = 1f;       
-    public float staminaRechargePerSecond = 0.5f;  
-    public float minStaminaToRun = 2f;             
-    public float staminaRechargeDelay = 0.5f;        // delay sebelum recharge
+    public float maxStamina = 5f;
+    public float staminaDrainPerSecond = 1f;
+    public float staminaRechargePerSecond = 0.5f;
+    public float minStaminaToRun = 2f;
+    public float staminaRechargeDelay = 0.5f;
+
+    [Header("Audio Settings")]
+    public AudioClip footstepSound;
+    // --- BARIS BARU: Variabel untuk jeda langkah kaki ---
+    public float walkStepInterval = 0.5f;
+    public float runStepInterval = 0.3f;
+    // ----------------------------------------------------
 
     private float currentStamina;
     private float rechargeTimer = 0f;
-
     private Rigidbody2D rb;
     private Animator animator;
+    private AudioSource audioSource;
     private bool isGrounded = false;
     private bool isRunning = false;
     private float moveInput;
-
-    private bool canRun = true;        
-    private bool isForcedStopRun = false; 
-
+    private bool canRun = true;
+    private bool isForcedStopRun = false;
     private enum Movement { Idle, Walk, Run };
     private Movement state = Movement.Idle;
+
+    // --- BARIS BARU: Variabel untuk mengontrol Coroutine ---
+    private Coroutine footstepCoroutine;
+    // ------------------------------------------------------
 
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
         animator = GetComponent<Animator>();
         currentStamina = maxStamina;
+        audioSource = GetComponent<AudioSource>();
+        
+        // --- PENTING: Loop sekarang di-nonaktifkan ---
+        audioSource.loop = false;
+        // --------------------------------------------
+        audioSource.clip = footstepSound;
     }
 
     void Update()
@@ -41,18 +58,15 @@ public class PlayerController : MonoBehaviour
         moveInput = Input.GetAxisRaw("Horizontal");
         bool runKey = Input.GetKey(KeyCode.LeftShift);
 
-        // --- Running & Stamina Logic ---
+        // (Logika Stamina & Gerakan tidak ada perubahan)
+        #region Stamina and Movement Logic
         if (runKey && moveInput != 0 && currentStamina >= minStaminaToRun && canRun && !isForcedStopRun)
         {
             isRunning = true;
             isForcedStopRun = false;
-
             currentStamina -= staminaDrainPerSecond * Time.deltaTime;
             currentStamina = Mathf.Max(currentStamina, 0f);
-
-            // reset timer recharge karena player masih menahan shift
             rechargeTimer = 0f;
-
             if (currentStamina <= 0f)
             {
                 isRunning = false;
@@ -63,8 +77,6 @@ public class PlayerController : MonoBehaviour
         else
         {
             isRunning = false;
-
-            // Recharge hanya mulai setelah delay jika Shift dilepas
             if (!runKey)
             {
                 rechargeTimer += Time.deltaTime;
@@ -76,27 +88,74 @@ public class PlayerController : MonoBehaviour
             }
             else
             {
-                // jika masih menahan Shift, timer tetap 0
                 rechargeTimer = 0f;
             }
-
             if (!runKey)
                 canRun = true;
         }
 
-        // --- Jump ---
         if (Input.GetButtonDown("Jump") && isGrounded)
         {
             rb.linearVelocity = new Vector2(rb.linearVelocity.x, jumpForce);
         }
 
-        // --- Flip Player ---
         if (moveInput != 0)
             transform.localScale = new Vector3(Mathf.Sign(moveInput), 1, 1);
+        #endregion
 
         UpdateAnimationState();
+        
+        // --- LOGIKA AUDIO SEKARANG MENGATUR COROUTINE ---
+        HandleFootstepAudio();
+    }
+    
+   
+    void HandleFootstepAudio()
+    {
+        // Jika player bergerak di darat
+        if (moveInput != 0 && isGrounded)
+        {
+            // Dan jika coroutine belum berjalan, maka mulai
+            if (footstepCoroutine == null)
+            {
+                footstepCoroutine = StartCoroutine(FootstepCoroutine());
+            }
+        }
+        // Jika player berhenti atau melompat
+        else
+        {
+            // Dan jika coroutine sedang berjalan, maka hentikan
+            if (footstepCoroutine != null)
+            {
+                StopCoroutine(footstepCoroutine);
+                footstepCoroutine = null;
+                
+              
+                // Hentikan suara yang sedang diputar secara paksa
+                audioSource.Stop();
+              
+            }
+        }
     }
 
+    // --- COROUTINE BARU: Ini yang mengatur jeda suara ---
+    IEnumerator FootstepCoroutine()
+    {
+        while (true) // Looping selamanya (akan dihentikan oleh StopCoroutine)
+        {
+            // Tentukan interval berdasarkan state jalan atau lari
+            float interval = isRunning ? runStepInterval : walkStepInterval;
+            
+            // Putar suara sekali
+            audioSource.Play();
+            
+            // Tunggu selama interval sebelum mengulang loop
+            yield return new WaitForSeconds(interval);
+        }
+    }
+    
+    // Sisa kode lainnya tetap sama...
+    #region Unchanged Code
     void FixedUpdate()
     {
         float currentSpeed = isRunning ? moveSpeed * runMultiplier : moveSpeed;
@@ -119,23 +178,18 @@ public class PlayerController : MonoBehaviour
     {
         if (moveInput != 0)
         {
-            if (isRunning)
-                state = Movement.Run;
-            else if (isForcedStopRun)
-                state = Movement.Walk;
-            else
-                state = Movement.Walk;
+            state = isRunning ? Movement.Run : Movement.Walk;
         }
         else
         {
             state = Movement.Idle;
         }
-
         animator.SetInteger("state", (int)state);
     }
-
+    
     public float GetStaminaNormalized()
     {
         return currentStamina / maxStamina;
     }
+    #endregion
 }
