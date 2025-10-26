@@ -5,11 +5,14 @@ TagManager:
   serializedVersion: 3
   tags:
   - Ground
+  - Wall
+  - Enemy
+  - Hide
   layers:
   - Default
   - TransparentFX
   - Ignore Raycast
-  - 
+  - HideZone
   - Water
   - UI
   - 
