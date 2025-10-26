@@ -23,7 +23,7 @@ public class ScoreManager : MonoBehaviour
 
     void Start()
     {
-        // Mengatur teks skor di awal permainan
+        // Mengatur teks skor di awal permainan 
         UpdateScoreText();
     }
 
